@@ -1,53 +1,35 @@
-name: "Lab 01 - Estrutura de Diretórios e Arquivos"
+name: Hello GitHub Actions
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  NODE_VERSION: "18"
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    workflow_dispatch:
 
 jobs:
-  demonstrar-estrutura:
-    name: "Demonstrar Estrutura Básica"
-    runs-on: ubuntu-latest
+ hello-job:
+  runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
+  steps: 
+    -name: Checkout Código
+      uses: actions/checkout@v4
 
-      - name: Mostrar estrutura .github/workflows
-        run: |
-          echo "=== ESTRUTURA DO DIRETÓRIO .github/workflows ==="
-          ls -la .github/workflows/
-          echo ""
+    -name: Executar Hello World
+     run: echo "Hello GitHub Actions"
 
-          total=$(find .github/workflows -maxdepth 1 -type f \
-            \( -name "*.yml" -o -name "*.yaml" \) | wc -l)
+    -name: Mostrar informações do sistema
+     run: |
+      echo "Sistema Operacional: ${{ runner.os }} "
+      echo "Diretório Atual: $ (pwd)"
+      echo "Data Atual: $ (date)"
+      echo "Usuário: $(whoami)"
 
-          echo "Total de workflows: $total"
+    -name: Listar arquivos do diretório
+     run: ls -la
 
-      - name: Elementos do workflow
-        run: |
-          echo "=== ELEMENTOS DO WORKFLOW ==="
-          echo "1. name: Nome do workflow (opcional)"
-          echo "2. on: Eventos que iniciam a execução"
-          echo "3. jobs: Trabalhos a executar"
-          echo "4. runs-on: Ambiente de execução deste job"
-          echo "5. steps: Etapas executadas em sequência neste job"
-
-      - name: Variáveis e contextos
-        env:
-          REPOSITORIO: ${{ github.repository }}
-          BRANCH: ${{ github.ref_name }}
-          ACTOR: ${{ github.actor }}
-        run: |
-          echo "=== VARIÁVEIS E CONTEXTOS ==="
-          echo "Variável NODE_VERSION: $NODE_VERSION"
-          echo "Repositório: $REPOSITORIO"
-          echo "Branch: $BRANCH"
-          echo "Usuário que iniciou a execução: $ACTOR"
+    -name: Comandos múltiplos
+      run: |
+        echo "Este é o Lab 01 do curso de GitHub Actions"
+        echo "Workflow executado com sucesso!"
+        echo "pronto para o próximo passo do curso"

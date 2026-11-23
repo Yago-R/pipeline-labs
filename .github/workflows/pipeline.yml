@@ -12,10 +12,10 @@ jobs:
   runs-on: ubuntu-latest
 
   steps: 
-    -name: Checkout Codigo
+    - name: Checkout Codigo
      uses: actions/checkout@v4
 
-    -name: Executar Hello World
+    - name: Executar Hello World
      run: echo "Hello GitHub Actions"
 
     -name: Mostrar informações do sistema

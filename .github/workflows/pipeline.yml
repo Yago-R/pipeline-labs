@@ -12,7 +12,7 @@ jobs:
   runs-on: ubuntu-latest
 
   steps: 
-    -name: Checkout Código
+    -name: Checkout Codigo
       uses: actions/checkout@v4
 
     -name: Executar Hello World

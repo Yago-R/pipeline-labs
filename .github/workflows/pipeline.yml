@@ -5,201 +5,234 @@ on:
     branches:
       - main
       - develop
-      - 'feature/**'
+      - "feature/**"
+      - "hotfix/**"
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
 jobs:
-  # Job 1: Demonstra contextos github e runner
   info-contexto:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      # Contexto GITHUB - Informações do repositório e evento
       - name: Exibir contexto GitHub
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          echo "Repositório: ${{ github.repository }}"
-          echo "Ator que disparou: ${{ github.actor }}"
-          echo "Branch/Ref: ${{ github.ref }}"
-          echo "Nome do branch: ${{ github.ref_name }}"
-          echo "Evento: ${{ github.event_name }}"
-          echo "SHA do commit: ${{ github.sha }}"
-          echo "Mensagem do commit: ${{ github.event.head_commit.message }}"
+          echo "Repositório: $GITHUB_REPOSITORY"
+          echo "Ator que disparou: $GITHUB_ACTOR"
+          echo "Branch/Ref: $GITHUB_REF"
+          echo "Branch de origem: $BRANCH_NAME"
+          echo "Evento: $GITHUB_EVENT_NAME"
+          echo "SHA da execução: $GITHUB_SHA"
 
-      # Contexto RUNNER - Informações do ambiente de execução
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            printf 'Mensagem do commit: %s\n' "$COMMIT_MESSAGE"
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            printf 'Título do pull request: %s\n' "$PR_TITLE"
+          else
+            echo "Execução manual."
+          fi
+
       - name: Exibir contexto Runner
+        env:
+          RUNNER_ARCHITECTURE: ${{ runner.arch }}
+          RUNNER_DISPLAY_NAME: ${{ runner.name }}
         run: |
-          echo "Sistema Operacional: ${{ runner.os }}"
-          echo "Arquitetura: ${{ runner.arch }}"
-          echo "Nome do runner: ${{ runner.name }}"
-          echo "Diretório temporário: ${{ runner.temp }}"
-          echo "Diretório de ferramentas: ${{ runner.tool_cache }}"
+          echo "Sistema Operacional: $RUNNER_OS"
+          echo "Arquitetura: $RUNNER_ARCHITECTURE"
+          echo "Nome do runner: $RUNNER_DISPLAY_NAME"
+          echo "Diretório temporário: $RUNNER_TEMP"
+          echo "Diretório de ferramentas: $RUNNER_TOOL_CACHE"
 
-      # Dump completo dos contextos para debug
-      - name: Debug - Dump contexto GitHub completo
-        run: echo '${{ toJSON(github) }}'
+      - name: Debug - Contexto GitHub selecionado
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg ref "$GITHUB_REF" \
+            --arg branch "$BRANCH_NAME" \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg sha "$GITHUB_SHA" \
+            '{
+              repository: $repository,
+              actor: $actor,
+              ref: $ref,
+              branch: $branch,
+              event_name: $event,
+              sha: $sha
+            }'
 
-      - name: Debug - Dump contexto Runner completo
-        run: echo '${{ toJSON(runner) }}'
+      - name: Debug - Contexto Runner completo
+        env:
+          RUNNER_CONTEXT: ${{ toJSON(runner) }}
+        run: |
+          printf '%s\n' "$RUNNER_CONTEXT"
 
-  # Job 2: Demonstra outputs de steps e referências entre steps
   outputs-entre-steps:
     runs-on: ubuntu-latest
+
     outputs:
-      # Exporta output para outros jobs usarem
       versao: ${{ steps.gerar-versao.outputs.version }}
       ambiente: ${{ steps.definir-ambiente.outputs.env_name }}
-    steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
 
-      # Step que GERA um output
+    steps:
       - name: Gerar versão
         id: gerar-versao
         run: |
-          VERSION="1.0.${{ github.run_number }}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION="1.0.$GITHUB_RUN_NUMBER"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Versão gerada: $VERSION"
 
-      # Step que GERA outro output
-      - name: Definir ambiente baseado no branch
+      - name: Definir ambiente baseado no evento e branch
         id: definir-ambiente
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            ENV_NAME="development"
+          elif [[ "$BRANCH_NAME" == "main" ]]; then
             ENV_NAME="production"
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          elif [[ "$BRANCH_NAME" == "develop" ]]; then
             ENV_NAME="staging"
           else
             ENV_NAME="development"
           fi
-          echo "env_name=$ENV_NAME" >> $GITHUB_OUTPUT
+
+          echo "env_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
           echo "Ambiente definido: $ENV_NAME"
 
-      # Step que USA outputs de steps anteriores
       - name: Usar outputs dos steps anteriores
+        env:
+          VERSION: ${{ steps.gerar-versao.outputs.version }}
+          ENV_NAME: ${{ steps.definir-ambiente.outputs.env_name }}
         run: |
-          echo "Usando versão: ${{ steps.gerar-versao.outputs.version }}"
-          echo "Usando ambiente: ${{ steps.definir-ambiente.outputs.env_name }}"
-          echo "Tag completa: ${{ steps.definir-ambiente.outputs.env_name }}-v${{ steps.gerar-versao.outputs.version }}"
+          echo "Usando versão: $VERSION"
+          echo "Usando ambiente: $ENV_NAME"
+          echo "Tag completa: $ENV_NAME-v$VERSION"
 
-  # Job 3: Demonstra expressões e funções
   expressoes-e-funcoes:
     runs-on: ubuntu-latest
-    # Usa output do job anterior
     needs: outputs-entre-steps
+
     steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
-
-      # Função contains() - Verifica se string contém texto
       - name: Verificar se é hotfix
-        if: contains(github.ref, 'hotfix')
-        run: echo "Este é um branch de HOTFIX - processo especial ativado!"
-
-      # Função startsWith() - Verifica início da string
-      - name: Ação apenas para feature branches
-        if: startsWith(github.ref, 'refs/heads/feature/')
-        run: echo "Branch de feature detectado: ${{ github.ref_name }}"
-
-      # Função endsWith() - Verifica fim da string
-      - name: Verificar se commit termina com número
+        if: contains(env.BRANCH_NAME, 'hotfix')
         run: |
-          if [[ "${{ endsWith(github.sha, '0') }}" == "true" ]]; then
+          echo "Este branch contém hotfix no nome!"
+
+      - name: Ação apenas para feature branches
+        if: startsWith(env.BRANCH_NAME, 'feature/')
+        run: |
+          echo "Branch de feature detectado: $BRANCH_NAME"
+
+      - name: Verificar se o SHA termina com zero
+        env:
+          SHA_TERMINA_COM_ZERO: ${{ endsWith(github.sha, '0') }}
+        run: |
+          if [[ "$SHA_TERMINA_COM_ZERO" == "true" ]]; then
             echo "SHA termina com zero!"
           else
-            echo "SHA: ${{ github.sha }}"
+            echo "SHA não termina com zero: $GITHUB_SHA"
           fi
 
-      # Função format() - Formata strings dinamicamente
       - name: Criar mensagem formatada
+        env:
+          MESSAGE: ${{ format('Deploy da versão {0} para {1} por {2}', needs.outputs-entre-steps.outputs.versao, needs.outputs-entre-steps.outputs.ambiente, github.actor) }}
         run: |
-          MESSAGE="${{ format('Deploy da versão {0} para {1} por {2}', needs.outputs-entre-steps.outputs.versao, needs.outputs-entre-steps.outputs.ambiente, github.actor) }}"
-          echo "$MESSAGE"
+          printf '%s\n' "$MESSAGE"
 
-      # Expressão complexa com múltiplas condições
-      - name: Deploy condicional
-        if: |
+      - name: Simular deploy condicional
+        if: >-
           github.event_name == 'push' &&
-          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+          (github.ref == 'refs/heads/main' ||
+           github.ref == 'refs/heads/develop')
+        env:
+          VERSION: ${{ needs.outputs-entre-steps.outputs.versao }}
+          ENV_NAME: ${{ needs.outputs-entre-steps.outputs.ambiente }}
         run: |
-          echo "Executando deploy automático..."
-          echo "Versão: ${{ needs.outputs-entre-steps.outputs.versao }}"
-          echo "Ambiente: ${{ needs.outputs-entre-steps.outputs.ambiente }}"
+          echo "Simulando deploy automático..."
+          echo "Versão: $VERSION"
+          echo "Ambiente: $ENV_NAME"
 
-  # Job 4: Demonstra contexto JOB e verificação de status
-  verificar-status:
-    runs-on: ubuntu-latest
-    needs: [info-contexto, outputs-entre-steps, expressoes-e-funcoes]
-    if: always() # Sempre executa, mesmo se jobs anteriores falhem
-    steps:
-      - name: Verificar status dos jobs anteriores
-        run: |
-          echo "Status do job atual: ${{ job.status }}"
-          echo "Analisando jobs anteriores..."
-
-          # Verifica resultado do needs
-          if [[ "${{ needs.info-contexto.result }}" == "success" ]]; then
-            echo "info-contexto: SUCESSO"
-          else
-            echo "info-contexto: FALHOU"
-          fi
-
-          if [[ "${{ needs.outputs-entre-steps.result }}" == "success" ]]; then
-            echo "outputs-entre-steps: SUCESSO"
-          else
-            echo "outputs-entre-steps: FALHOU"
-          fi
-
-          if [[ "${{ needs.expressoes-e-funcoes.result }}" == "success" ]]; then
-            echo "expressoes-e-funcoes: SUCESSO"
-          else
-            echo "expressoes-e-funcoes: FALHOU"
-          fi
-
-      # Ação condicional baseada em sucesso de todos os jobs
-      - name: Notificar sucesso total
-        if: |
-          needs.info-contexto.result == 'success' &&
-          needs.outputs-entre-steps.result == 'success' &&
-          needs.expressoes-e-funcoes.result == 'success'
-        run: echo "Todos os jobs executaram com SUCESSO!"
-
-      # Ação condicional se algum job falhou
-      - name: Notificar falha
-        if: |
-          needs.info-contexto.result == 'failure' ||
-          needs.outputs-entre-steps.result == 'failure' ||
-          needs.expressoes-e-funcoes.result == 'failure'
-        run: |
-          echo "Pelo menos um job FALHOU!"
-          echo "Verifique os logs acima para mais detalhes."
-
-  # Job 5: Caso de uso prático - Nomear artefatos dinamicamente
   criar-artefato-dinamico:
     runs-on: ubuntu-latest
     needs: outputs-entre-steps
-    steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
 
+    steps:
       - name: Criar arquivo de build simulado
+        env:
+          VERSION: ${{ needs.outputs-entre-steps.outputs.versao }}
+          ENV_NAME: ${{ needs.outputs-entre-steps.outputs.ambiente }}
         run: |
           mkdir -p build
-          echo "Build info" > build/info.txt
-          echo "Versão: ${{ needs.outputs-entre-steps.outputs.versao }}" >> build/info.txt
-          echo "Ambiente: ${{ needs.outputs-entre-steps.outputs.ambiente }}" >> build/info.txt
-          echo "Branch: ${{ github.ref_name }}" >> build/info.txt
-          echo "Commit: ${{ github.sha }}" >> build/info.txt
-          echo "Actor: ${{ github.actor }}" >> build/info.txt
+
+          {
+            echo "Build info"
+            echo "Versão: $VERSION"
+            echo "Ambiente: $ENV_NAME"
+            echo "Branch: $BRANCH_NAME"
+            echo "Commit da execução: $GITHUB_SHA"
+            echo "Actor: $GITHUB_ACTOR"
+          } > build/info.txt
+
           cat build/info.txt
 
-      # Nome do artefato usa expressões para ser dinâmico
       - name: Upload artefato com nome dinâmico
         uses: actions/upload-artifact@v4
         with:
-          # Nome formatado dinamicamente: app-production-v1.0.123-abc1234
           name: ${{ format('app-{0}-v{1}-{2}', needs.outputs-entre-steps.outputs.ambiente, needs.outputs-entre-steps.outputs.versao, github.sha) }}
           path: build/
           retention-days: 5
+          if-no-files-found: error
+
+  verificar-status:
+    runs-on: ubuntu-latest
+
+    needs:
+      - info-contexto
+      - outputs-entre-steps
+      - expressoes-e-funcoes
+      - criar-artefato-dinamico
+
+    if: ${{ always() }}
+
+    steps:
+      - name: Verificar status dos jobs anteriores
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+          CURRENT_JOB_STATUS: ${{ job.status }}
+        run: |
+          echo "Status do job atual neste momento: $CURRENT_JOB_STATUS"
+          echo "Resultados dos jobs anteriores:"
+
+          printf '%s\n' "$NEEDS_CONTEXT" |
+            jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+
+      - name: Notificar sucesso total
+        if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}
+        run: |
+          echo "Todos os jobs executaram com SUCESSO!"
+
+      - name: Notificar falha
+        if: ${{ always() && contains(needs.*.result, 'failure') }}
+        run: |
+          echo "Pelo menos um job FALHOU!"
+          echo "Verifique os logs dos jobs anteriores."
+
+      - name: Notificar cancelamento ou job ignorado
+        if: ${{ always() && (contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')) }}
+        run: |
+          echo "Pelo menos um job foi cancelado ou ignorado."
